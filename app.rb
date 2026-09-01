@@ -15,19 +15,28 @@ options '*' do
   200
 end
 
-# เปลี่ยนจาก Cleverbot.new เป็น CleverBot.new (B ตัวใหญ่)
+# สร้าง instance ของ CleverBot
 bot = CleverBot.new
 
 post '/chat' do
   content_type :json
-  payload = JSON.parse(request.body.read)
-  user_input = payload['message']
-
+  
   begin
-    # เรียกใช้เมธอด think
+    request_payload = JSON.parse(request.body.read)
+    user_input = request_payload['message']
+
+    # ส่งคำถามไปยัง Cleverbot
     reply = bot.think(user_input)
-    { status: 'success', reply: reply }.to_json
+
+    if reply && !reply.empty?
+      { status: 'success', reply: reply }.to_json
+    else
+      # กรณี Cleverbot คืนค่าว่างเปล่า
+      { status: 'error', message: 'Cleverbot returned empty response' }.to_json
+    end
   rescue => e
+    # ส่งข้อความ Error ที่เกิดขึ้นจริงกลับไปแสดงผล
+    puts "Error during chat: #{e.message}"
     status 500
     { status: 'error', message: e.message }.to_json
   end
