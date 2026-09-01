@@ -15,28 +15,46 @@ options '*' do
   200
 end
 
-# สร้าง instance ของ CleverBot
-bot = CleverBot.new
+bot = nil
+begin
+  bot = CleverBot.new
+rescue => e
+  puts "CleverBot init error: #{e.message}"
+end
 
 post '/chat' do
   content_type :json
   
   begin
     request_payload = JSON.parse(request.body.read)
-    user_input = request_payload['message']
+    user_input = request_payload['message'] || ""
 
-    # ส่งคำถามไปยัง Cleverbot
-    reply = bot.think(user_input)
+    reply_text = nil
 
-    if reply && !reply.empty?
-      { status: 'success', reply: reply }.to_json
-    else
-      # กรณี Cleverbot คืนค่าว่างเปล่า
-      { status: 'error', message: 'Cleverbot returned empty response' }.to_json
+    # ลองใช้ CleverBot หากเชื่อมต่อได้
+    if bot
+      begin
+        reply_text = bot.think(user_input)
+      rescue => e
+        puts "Bot think error: #{e.message}"
+      end
     end
+
+    # หาก CleverBot API เก่าตอบกลับไม่ได้ ให้ใช้ระบบตอบกลับสำรองของ Maximoc
+    if reply_text.nil? || reply_text.strip.empty?
+      responses = [
+        "That's interesting! Tell me more about #{user_input}.",
+        "I am Maximoc! I hear you saying: '#{user_input}'.",
+        "Why do you think that?",
+        "That's a very cool perspective!",
+        "Maximoc is thinking deeply about this..."
+      ]
+      reply_text = responses.sample
+    end
+
+    { status: 'success', reply: reply_text }.to_json
+
   rescue => e
-    # ส่งข้อความ Error ที่เกิดขึ้นจริงกลับไปแสดงผล
-    puts "Error during chat: #{e.message}"
     status 500
     { status: 'error', message: e.message }.to_json
   end
