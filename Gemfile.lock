@@ -1,7 +1,6 @@
 GEM
   remote: https://rubygems.org/
   specs:
-    cleverbot-api (1.0.0)
     mustermann (3.0.3)
     nio4r (2.7.4)
     puma (6.6.0)
@@ -18,6 +17,12 @@ GEM
       rackup (>= 2.2.0)
       tilt (~> 2.0)
     tilt (2.6.0)
+
+GIT
+  remote: https://github.com/gabrielecirulli/cleverbot-api.git
+  revision: 8f45a6c1e55225c50c058742b6a2fef45a23f3e1
+  specs:
+    cleverbot-api (1.0.0)
 
 PLATFORMS
   ruby
