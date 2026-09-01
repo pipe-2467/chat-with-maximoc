@@ -1,6 +1,8 @@
 require 'sinatra'
-require 'cleverbot-api'
+require 'net/http'
+require 'uri'
 require 'json'
+require 'digest/md5'
 
 set :bind, '0.0.0.0'
 set :port, ENV['PORT'] || 4567
@@ -15,12 +17,66 @@ options '*' do
   200
 end
 
-bot = nil
-begin
-  bot = CleverBot.new
-rescue => e
-  puts "CleverBot init error: #{e.message}"
+# Class สำหรับดึงคำตอบจาก Cleverbot โดยตรง
+class RealCleverbot
+  def initialize
+    @cookie = nil
+  end
+
+  def think(stimulus)
+    uri = URI.parse("https://www.cleverbot.com/getreply")
+    
+    # ดึง cookie หากยังไม่มี
+    init_cookie if @cookie.nil?
+
+    # เตรียมข้อมูลส่งให้ Cleverbot
+    payload = "stimulus=#{URI.encode_www_form_component(stimulus)}&cb_settings_scripting=no"
+    
+    # คำนวณ MD5 digest ที่ Cleverbot บังคับใช้
+    digest = Digest::MD5.hexdigest(payload[9..34] || "")
+    payload += "&icount=1&fcf=false&state=&prediction=&click=1&postdigest=#{digest}"
+
+    request = Net::HTTP::Post.new(uri)
+    request["Cookie"] = @cookie
+    request["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+    request["Content-Type"] = "text/plain;charset=UTF-8"
+    request["Accept"] = "*/*"
+    request.body = payload
+
+    req_options = { use_ssl: uri.scheme == "https" }
+
+    response = Net::HTTP.start(uri.hostname, uri.port, req_options) do |http|
+      http.request(request)
+    end
+
+    # เก็บ Cookie ล่าสุดไว้ใช้โต้ตอบต่อเนื่อง
+    if response["set-cookie"]
+      @cookie = response["set-cookie"].split(';').first
+    end
+
+    # แยกเอาคำตอบของ Cleverbot (บรรทัดแรกของ Response)
+    lines = response.body.to_s.split("\r")
+    reply = lines[0] ? lines[0].strip : ""
+
+    reply.empty? ? "I don't know what to say." : reply
+  rescue => e
+    puts "Cleverbot Fetch Error: #{e.message}"
+    "Error connecting to Cleverbot server."
+  end
+
+  private
+
+  def init_cookie
+    uri = URI.parse("https://www.cleverbot.com/")
+    response = Net::HTTP.get_response(uri)
+    if response["set-cookie"]
+      @cookie = response["set-cookie"].split(';').first
+    end
+  end
 end
+
+# สร้าง ตัวแทน Cleverbot แท้
+bot = RealCleverbot.new
 
 post '/chat' do
   content_type :json
@@ -29,31 +85,10 @@ post '/chat' do
     request_payload = JSON.parse(request.body.read)
     user_input = request_payload['message'] || ""
 
-    reply_text = nil
-
-    # ลองใช้ CleverBot หากเชื่อมต่อได้
-    if bot
-      begin
-        reply_text = bot.think(user_input)
-      rescue => e
-        puts "Bot think error: #{e.message}"
-      end
-    end
-
-    # หาก CleverBot API เก่าตอบกลับไม่ได้ ให้ใช้ระบบตอบกลับสำรองของ Maximoc
-    if reply_text.nil? || reply_text.strip.empty?
-      responses = [
-        "That's interesting! Tell me more about #{user_input}.",
-        "I am Maximoc! I hear you saying: '#{user_input}'.",
-        "Why do you think that?",
-        "That's a very cool perspective!",
-        "Maximoc is thinking deeply about this..."
-      ]
-      reply_text = responses.sample
-    end
+    # ยิงไปเอาคำตอบจาก Cleverbot จริงๆ
+    reply_text = bot.think(user_input)
 
     { status: 'success', reply: reply_text }.to_json
-
   rescue => e
     status 500
     { status: 'error', message: e.message }.to_json
