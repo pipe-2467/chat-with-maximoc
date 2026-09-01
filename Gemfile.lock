@@ -1,7 +1,5 @@
 GIT
   remote: https://github.com/gabrielecirulli/cleverbot-api.git
-  revision: 8f45a6c1e55225c50c058742b6a2fef45a23f3e1
-  branch: master
   specs:
     cleverbot-api (1.0.0)
 
