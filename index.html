@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat with Maximoc</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #ffffff;
+            color: #333333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .header-title {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #d32f2f;
+            text-align: center;
+            margin-bottom: 20px;
+            font-family: 'Comic Sans MS', 'Arial', sans-serif;
+        }
+
+        .chat-wrapper {
+            width: 100%;
+            max-width: 650px;
+            border: 2px solid #999999;
+            background-color: #f9f9f9;
+            padding: 15px;
+            box-sizing: border-box;
+        }
+
+        .chat-history {
+            height: 350px;
+            overflow-y: auto;
+            border: 1px solid #cccccc;
+            background-color: #ffffff;
+            padding: 10px;
+            margin-bottom: 15px;
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+
+        .chat-line {
+            margin-bottom: 8px;
+        }
+
+        .user-label {
+            color: #0000d6;
+            font-weight: bold;
+        }
+
+        .bot-label {
+            color: #d32f2f;
+            font-weight: bold;
+        }
+
+        .input-section {
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 8px;
+            font-size: 1rem;
+            border: 1px solid #777777;
+            background-color: #ffffff;
+        }
+
+        button {
+            padding: 8px 16px;
+            font-size: 0.95rem;
+            font-weight: bold;
+            cursor: pointer;
+            border: 1px solid #666666;
+            background-color: #e0e0e0;
+        }
+
+        button:active {
+            background-color: #cccccc;
+        }
+
+        .btn-clear {
+            background-color: #f0f0f0;
+            color: #555555;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-title">Maximoc</div>
+
+    <div class="chat-wrapper">
+        <div class="chat-history" id="chatHistory"></div>
+
+        <div class="input-section">
+            <input type="text" id="userInput" placeholder="Think about this..." onkeypress="handleKeyPress(event)">
+            <button onclick="sendMessage()">Think About It</button>
+            <button class="btn-clear" onclick="clearChat()">Clear</button>
+        </div>
+    </div>
+
+    <script>
+        const chatHistory = document.getElementById('chatHistory');
+        const userInput = document.getElementById('userInput');
+
+        // URL ของ Render Backend ที่รันสำเร็จแล้ว
+        const BACKEND_URL = 'https://maximoc-backend.onrender.com/chat';
+
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (text === '') return;
+
+            // 1. แสดงข้อความของ User
+            appendMessage('User', text, 'user-label');
+            userInput.value = '';
+
+            // 2. แสดงสถานะกำลังคิด
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'chat-line';
+            loadingDiv.id = 'loading-indicator';
+            loadingDiv.innerHTML = `<span class="bot-label">Maximoc:</span> <i>Thinking...</i>`;
+            chatHistory.appendChild(loadingDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+
+            try {
+                // 3. ยิง Request ไปหา Render Backend
+                const response = await fetch(BACKEND_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ message: text })
+                });
+
+                const data = await response.json();
+
+                // ลบสถานะกำลังคิดออก
+                document.getElementById('loading-indicator')?.remove();
+
+                if (data.status === 'success') {
+                    appendMessage('Maximoc', data.reply, 'bot-label');
+                } else {
+                    appendMessage('Maximoc', '[Error: ไม่สามารถดึงคำตอบได้]', 'bot-label');
+                }
+
+            } catch (error) {
+                document.getElementById('loading-indicator')?.remove();
+                appendMessage('Maximoc', '[Error: เชื่อมต่อ Server ไม่สำเร็จ]', 'bot-label');
+                console.error('Fetch error:', error);
+            }
+        }
+
+        function appendMessage(sender, text, labelClass) {
+            const msgLine = document.createElement('div');
+            msgLine.className = 'chat-line';
+            msgLine.innerHTML = `<span class="${labelClass}">${sender}:</span> ${escapeHtml(text)}`;
+            chatHistory.appendChild(msgLine);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        function clearChat() {
+            chatHistory.innerHTML = '';
+            userInput.value = '';
+        }
+
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        function escapeHtml(string) {
+            return string.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+    </script>
+
+</body>
+</html>
