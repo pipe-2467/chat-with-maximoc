@@ -15,7 +15,8 @@ options '*' do
   200
 end
 
-bot = Cleverbot.new
+# เปลี่ยนจาก Cleverbot.new เป็น CleverBot.new (B ตัวใหญ่)
+bot = CleverBot.new
 
 post '/chat' do
   content_type :json
@@ -23,6 +24,7 @@ post '/chat' do
   user_input = payload['message']
 
   begin
+    # เรียกใช้เมธอด think
     reply = bot.think(user_input)
     { status: 'success', reply: reply }.to_json
   rescue => e
