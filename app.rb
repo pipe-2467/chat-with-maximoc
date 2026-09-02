@@ -29,7 +29,6 @@ post '/chat' do
     request_payload = JSON.parse(request.body.read)
     user_input = request_payload['message'] || ""
 
-    # เรียกใช้ Phi-3 ผ่าน OpenRouter Network
     uri = URI.parse("https://openrouter.ai/api/v1/chat/completions")
     
     headers = {
@@ -39,10 +38,13 @@ post '/chat' do
       'X-Title' => 'Maximoc Chatbot'
     }
 
+    # ใช้ Phi-3.5 Mini Instruct ฟรี หรือ fallback เป็น Phi-3 Standard
+    model_id = "microsoft/phi-3.5-mini-instruct:free"
+
     body = {
-      model: "microsoft/phi-3-mini-128k-instruct:free",
+      model: model_id,
       messages: [
-        { role: "system", content: "You are Maximoc, a clever AI assistant. Answer briefly." },
+        { role: "system", content: "You are Maximoc, a clever AI assistant. Answer briefly and directly." },
         { role: "user", content: user_input }
       ],
       max_tokens: 200,
@@ -58,7 +60,7 @@ post '/chat' do
     req.body = body
 
     response = http.request(req)
-    data = JSON.parse(response.body)
+    data = JSON.parse(response.body) rescue {}
 
     if response.code.to_i == 200 && data['choices'] && data['choices'][0] && data['choices'][0]['message']
       reply_text = data['choices'][0]['message']['content'].strip
