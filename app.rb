@@ -6,6 +6,22 @@ require 'json'
 set :bind, '0.0.0.0'
 set :port, ENV['PORT'] || 4567
 
+# ฟังก์ชันดึง Token จาก Environment Variable หรือดึงจาก Pastefy โดยอัตโนมัติ
+def get_hf_token
+  return ENV['HF_TOKEN'] if ENV['HF_TOKEN'] && !ENV['HF_TOKEN'].empty?
+
+  begin
+    uri = URI.parse("https://pastefy.app/5vQ4rv88/raw")
+    response = Net::HTTP.get_response(uri)
+    response.body.strip if response.is_a?(Net::HTTPSuccess)
+  rescue => e
+    puts "Error fetching token from Pastefy: #{e.message}"
+    nil
+  end
+end
+
+HF_TOKEN = get_hf_token
+
 before do
   response.headers['Access-Control-Allow-Origin'] = '*'
   response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
@@ -16,35 +32,6 @@ options '*' do
   200
 end
 
-def fetch_ai_reply(prompt)
-  # ลองดึงจาก API หลัก
-  encoded_prompt = URI.encode_www_form_component(prompt)
-  uri = URI.parse("https://text.pollinations.ai/#{encoded_prompt}?model=openai")
-  
-  http = Net::HTTP.new(uri.hostname, uri.port)
-  http.use_ssl = true
-  http.open_timeout = 5
-  http.read_timeout = 5
-
-  request = Net::HTTP::Get.new(uri)
-  response = http.request(request)
-
-  if response.is_a?(Net::HTTPSuccess) && !response.body.start_with?("<!DOCTYPE")
-    return response.body.force_encoding("UTF-8").strip
-  end
-
-  raise "API returned error or HTML"
-rescue => e
-  # หาก API มีปัญหา (เช่น 502 Bad Gateway) ให้ใช้คำตอบสำรองฉลาดๆ ทันที
-  fallback_responses = [
-    "Hello! I'm Maximoc. How can I help you today?",
-    "Hey there! Nice to chat with you.",
-    "I'm here! What's on your mind?",
-    "Hi! Everything is working smoothly now."
-  ]
-  fallback_responses.sample
-end
-
 post '/chat' do
   content_type :json
   
@@ -52,11 +39,52 @@ post '/chat' do
     request_payload = JSON.parse(request.body.read)
     user_input = request_payload['message'] || ""
 
-    prompt = "Reply as a clever and friendly chatbot named Maximoc. Keep response short and direct: #{user_input}"
-    
-    reply_text = fetch_ai_reply(prompt)
+    token = HF_TOKEN || get_hf_token
 
-    { status: 'success', reply: reply_text }.to_json
+    if token.nil? || token.empty?
+      return { status: 'error', message: 'Hugging Face Token is missing' }.to_json
+    end
+
+    # เรียกใช้โมเดล Microsoft Phi-3 Mini Instruct บน Hugging Face
+    model_id = "microsoft/Phi-3-mini-4k-instruct"
+    uri = URI.parse("https://api-inference.huggingface.co/models/#{model_id}")
+    
+    prompt = "<|user|>\nYou are Maximoc, a clever AI assistant. Answer this briefly: #{user_input}<|end|>\n<|assistant|>"
+
+    headers = {
+      'Authorization' => "Bearer #{token}",
+      'Content-Type' => 'application/json'
+    }
+    
+    body = {
+      inputs: prompt,
+      parameters: {
+        max_new_tokens: 250,
+        temperature: 0.7,
+        return_full_text: false
+      }
+    }.to_json
+
+    http = Net::HTTP.new(uri.hostname, uri.port)
+    http.use_ssl = true
+    http.read_timeout = 25
+
+    request = Net::HTTP::Post.new(uri.request_uri, headers)
+    request.body = body
+
+    response = http.request(request)
+    data = JSON.parse(response.body)
+
+    if response.is_a?(Net::HTTPSuccess) && data.is_a?(Array) && data[0]['generated_text']
+      reply_text = data[0]['generated_text'].strip
+      { status: 'success', reply: reply_text }.to_json
+    elsif data.is_a?(Hash) && data['error']
+      # กรณีโมเดลกำลัง Cold Start บน Hugging Face Server
+      { status: 'success', reply: "[Phi-3 กำลังโหลดเข้าความจำ เซิร์ฟเวอร์กำลังเริ่มทำงาน ลองส่งใหม่อีกครั้งใน 10-15 วินาที]" }.to_json
+    else
+      { status: 'error', message: 'Unable to get response from Phi-3' }.to_json
+    end
+
   rescue => e
     status 500
     { status: 'error', message: e.message }.to_json
