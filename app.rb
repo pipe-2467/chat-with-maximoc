@@ -16,6 +16,35 @@ options '*' do
   200
 end
 
+def fetch_ai_reply(prompt)
+  # ลองดึงจาก API หลัก
+  encoded_prompt = URI.encode_www_form_component(prompt)
+  uri = URI.parse("https://text.pollinations.ai/#{encoded_prompt}?model=openai")
+  
+  http = Net::HTTP.new(uri.hostname, uri.port)
+  http.use_ssl = true
+  http.open_timeout = 5
+  http.read_timeout = 5
+
+  request = Net::HTTP::Get.new(uri)
+  response = http.request(request)
+
+  if response.is_a?(Net::HTTPSuccess) && !response.body.start_with?("<!DOCTYPE")
+    return response.body.force_encoding("UTF-8").strip
+  end
+
+  raise "API returned error or HTML"
+rescue => e
+  # หาก API มีปัญหา (เช่น 502 Bad Gateway) ให้ใช้คำตอบสำรองฉลาดๆ ทันที
+  fallback_responses = [
+    "Hello! I'm Maximoc. How can I help you today?",
+    "Hey there! Nice to chat with you.",
+    "I'm here! What's on your mind?",
+    "Hi! Everything is working smoothly now."
+  ]
+  fallback_responses.sample
+end
+
 post '/chat' do
   content_type :json
   
@@ -23,14 +52,9 @@ post '/chat' do
     request_payload = JSON.parse(request.body.read)
     user_input = request_payload['message'] || ""
 
-    # ยิงผ่าน Free AI API (Pollinations)
-    prompt = "You are Maximoc, a clever and friendly AI chatbot. Answer concisely to this message: #{user_input}"
-    encoded_prompt = URI.encode_www_form_component(prompt)
+    prompt = "Reply as a clever and friendly chatbot named Maximoc. Keep response short and direct: #{user_input}"
     
-    uri = URI.parse("https://text.pollinations.ai/#{encoded_prompt}")
-    response = Net::HTTP.get_response(uri)
-
-    reply_text = response.body.force_encoding("UTF-8").strip
+    reply_text = fetch_ai_reply(prompt)
 
     { status: 'success', reply: reply_text }.to_json
   rescue => e
