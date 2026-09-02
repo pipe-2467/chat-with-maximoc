@@ -21,22 +21,21 @@ post '/chat' do
   
   token = ENV['HF_TOKEN']
   
-  if token.nil? || token.empty?
-    return { status: 'error', reply: 'ยังไม่ได้ตั้งค่า HF_TOKEN ใน Environment Variable ของ Render' }.to_json
+  if token.nil? || token.strip.empty?
+    return { status: 'error', message: 'ยังไม่ได้ตั้งค่า HF_TOKEN ใน Environment Variables บน Render' }.to_json
   end
 
   begin
     request_payload = JSON.parse(request.body.read)
     user_input = request_payload['message'] || ""
 
-    # ใช้ Endpoint ของ Hugging Face Inference API
     model_id = "microsoft/Phi-3-mini-4k-instruct"
     uri = URI.parse("https://api-inference.huggingface.co/models/#{model_id}")
     
     prompt = "<|user|>\nYou are Maximoc, a clever AI assistant. Answer this briefly: #{user_input}<|end|>\n<|assistant|>"
 
     headers = {
-      'Authorization' => "Bearer #{token}",
+      'Authorization' => "Bearer #{token.strip}",
       'Content-Type' => 'application/json'
     }
     
@@ -51,26 +50,25 @@ post '/chat' do
 
     http = Net::HTTP.new(uri.hostname, uri.port)
     http.use_ssl = true
-    http.read_timeout = 30
+    http.read_timeout = 25
 
     request = Net::HTTP::Post.new(uri.request_uri, headers)
     request.body = body
 
     response = http.request(request)
-    data = JSON.parse(response.body)
+    
+    begin
+      data = JSON.parse(response.body)
+    rescue
+      data = nil
+    end
 
     if response.code.to_i == 200 && data.is_a?(Array) && data[0] && data[0]['generated_text']
-      reply_text = data[0]['generated_text'].strip
-      { status: 'success', reply: reply_text }.to_json
+      { status: 'success', reply: data[0]['generated_text'].strip }.to_json
     elsif data.is_a?(Hash) && data['error']
-      error_msg = data['error']
-      if error_msg.include?("currently loading")
-        { status: 'success', reply: "[Phi-3 กำลังเริ่มระบบ ลองส่งใหม่อีกครั้งใน 10-15 วินาที]" }.to_json
-      else
-        { status: 'success', reply: "[HF Error: #{error_msg}]" }.to_json
-      end
+      { status: 'error', message: "HF API: #{data['error']}" }.to_json
     else
-      { status: 'success', reply: "[Error response code: #{response.code}]" }.to_json
+      { status: 'error', message: "HTTP #{response.code}: #{response.body[0..150]}" }.to_json
     end
 
   rescue => e
