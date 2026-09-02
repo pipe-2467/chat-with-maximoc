@@ -109,7 +109,7 @@
         const chatHistory = document.getElementById('chatHistory');
         const userInput = document.getElementById('userInput');
 
-        // URL ของ Render Backend ที่รันสำเร็จแล้ว
+        // URL ของ Render Backend
         const BACKEND_URL = 'https://maximoc-backend.onrender.com/chat';
 
         async function sendMessage() {
@@ -146,12 +146,14 @@
                 if (data.status === 'success') {
                     appendMessage('Maximoc', data.reply, 'bot-label');
                 } else {
-                    appendMessage('Maximoc', '[Error: ไม่สามารถดึงคำตอบได้]', 'bot-label');
+                    // ดึงรายละเอียด Error ที่ส่งมาจาก Backend โดยตรง
+                    const errorDetail = data.reply || data.message || 'ไม่ทราบสาเหตุ';
+                    appendMessage('Maximoc', `[Error: ${errorDetail}]`, 'bot-label');
                 }
 
             } catch (error) {
                 document.getElementById('loading-indicator')?.remove();
-                appendMessage('Maximoc', '[Error: เชื่อมต่อ Server ไม่สำเร็จ]', 'bot-label');
+                appendMessage('Maximoc', '[Error: ไม่สามารถเชื่อมต่อกับ Server ได้]', 'bot-label');
                 console.error('Fetch error:', error);
             }
         }
