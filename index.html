@@ -109,7 +109,6 @@
         const chatHistory = document.getElementById('chatHistory');
         const userInput = document.getElementById('userInput');
 
-        // URL ของ Render Backend
         const BACKEND_URL = 'https://maximoc-backend.onrender.com/chat';
 
         async function sendMessage() {
@@ -144,9 +143,9 @@
                 document.getElementById('loading-indicator')?.remove();
 
                 if (data.status === 'success') {
-                    appendMessage('Maximoc', data.reply, 'bot-label');
+                    // แสดงข้อความ Maximoc แบบพิมพ์ทีละตัว
+                    typeWriter('Maximoc', data.reply, 'bot-label', 20);
                 } else {
-                    // ดึงรายละเอียด Error ที่ส่งมาจาก Backend โดยตรง
                     const errorDetail = data.reply || data.message || 'ไม่ทราบสาเหตุ';
                     appendMessage('Maximoc', `[Error: ${errorDetail}]`, 'bot-label');
                 }
@@ -156,6 +155,33 @@
                 appendMessage('Maximoc', '[Error: ไม่สามารถเชื่อมต่อกับ Server ได้]', 'bot-label');
                 console.error('Fetch error:', error);
             }
+        }
+
+        // ฟังก์ชันพิมพ์ข้อความทีละตัวอักษร (Typing Effect)
+        function typeWriter(sender, text, labelClass, speed = 20) {
+            const msgLine = document.createElement('div');
+            msgLine.className = 'chat-line';
+            
+            const labelSpan = document.createElement('span');
+            labelSpan.className = labelClass;
+            labelSpan.textContent = `${sender}: `;
+            
+            const textSpan = document.createElement('span');
+            
+            msgLine.appendChild(labelSpan);
+            msgLine.appendChild(textSpan);
+            chatHistory.appendChild(msgLine);
+
+            let i = 0;
+            function type() {
+                if (i < text.length) {
+                    textSpan.textContent += text.charAt(i);
+                    i++;
+                    chatHistory.scrollTop = chatHistory.scrollHeight;
+                    setTimeout(type, speed);
+                }
+            }
+            type();
         }
 
         function appendMessage(sender, text, labelClass) {
