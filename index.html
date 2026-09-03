@@ -111,6 +111,9 @@
 
         const BACKEND_URL = 'https://maximoc-backend.onrender.com/chat';
 
+        // ตัวแปรเก็บบทสนทนาเพื่อทำความทรงจำส่งให้ Backend (เก็บสูงสุด 10 ข้อความล่าสุด)
+        let memory = [];
+
         async function sendMessage() {
             const text = userInput.value.trim();
             if (text === '') return;
@@ -128,13 +131,16 @@
             chatHistory.scrollTop = chatHistory.scrollHeight;
 
             try {
-                // 3. ยิง Request ไปหา Render Backend
+                // 3. ยิง Request พร้อม History
                 const response = await fetch(BACKEND_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ message: text })
+                    body: JSON.stringify({ 
+                        message: text,
+                        history: memory
+                    })
                 });
 
                 const data = await response.json();
@@ -143,8 +149,17 @@
                 document.getElementById('loading-indicator')?.remove();
 
                 if (data.status === 'success') {
+                    // บันทึกความทรงจำ (User & Assistant)
+                    memory.push({ role: 'user', content: text });
+                    memory.push({ role: 'assistant', content: data.reply });
+
+                    // จำกัดความจำไว้ที่ 10 ข้อความล่าสุดเพื่อไม่ให้กิน Token เกิน
+                    if (memory.length > 10) {
+                        memory = memory.slice(memory.length - 10);
+                    }
+
                     // แสดงข้อความ Maximoc แบบพิมพ์ทีละตัว
-                    typeWriter('Maximoc', data.reply, 'bot-label', 20);
+                    typeWriter('Maximoc', data.reply, 'bot-label', 25);
                 } else {
                     const errorDetail = data.reply || data.message || 'ไม่ทราบสาเหตุ';
                     appendMessage('Maximoc', `[Error: ${errorDetail}]`, 'bot-label');
@@ -157,8 +172,8 @@
             }
         }
 
-        // ฟังก์ชันพิมพ์ข้อความทีละตัวอักษร (Typing Effect)
-        function typeWriter(sender, text, labelClass, speed = 20) {
+        // พิมพ์ตัวอักษรทีละตัว
+        function typeWriter(sender, text, labelClass, speed = 25) {
             const msgLine = document.createElement('div');
             msgLine.className = 'chat-line';
             
@@ -195,6 +210,7 @@
         function clearChat() {
             chatHistory.innerHTML = '';
             userInput.value = '';
+            memory = []; // ล้างความจำเมื่อกด Clear
         }
 
         function handleKeyPress(e) {
