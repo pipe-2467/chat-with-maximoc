@@ -38,8 +38,8 @@ post '/chat' do
       'X-Title' => 'Maximoc Chatbot'
     }
 
-    # ใช้ Phi-3.5 Mini Instruct ฟรี หรือ fallback เป็น Phi-3 Standard
-    model_id = "microsoft/phi-3.5-mini-instruct:free"
+    # เปลี่ยนเป็นโมเดล Meta-Llama ขนาดเล็ก ประมวลผลไว
+    model_id = "meta-llama/llama-3.2-1b-instruct"
 
     body = {
       model: model_id,
