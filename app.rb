@@ -1,78 +1,228 @@
-require 'sinatra'
-require 'net/http'
-require 'uri'
-require 'json'
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat with Maximoc</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #ffffff;
+            color: #333333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
 
-set :bind, '0.0.0.0'
-set :port, ENV['PORT'] || 4567
+        .header-title {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #d32f2f;
+            text-align: center;
+            margin-bottom: 20px;
+            font-family: 'Comic Sans MS', 'Arial', sans-serif;
+        }
 
-before do
-  response.headers['Access-Control-Allow-Origin'] = '*'
-  response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-  response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-end
+        .chat-wrapper {
+            width: 100%;
+            max-width: 650px;
+            border: 2px solid #999999;
+            background-color: #f9f9f9;
+            padding: 15px;
+            box-sizing: border-box;
+        }
 
-options '*' do
-  200
-end
+        .chat-history {
+            height: 350px;
+            overflow-y: auto;
+            border: 1px solid #cccccc;
+            background-color: #ffffff;
+            padding: 10px;
+            margin-bottom: 15px;
+            font-size: 1rem;
+            line-height: 1.5;
+        }
 
-post '/chat' do
-  content_type :json
-  
-  api_key = ENV['OPENROUTER_API_KEY']
-  
-  if api_key.nil? || api_key.strip.empty?
-    return { status: 'error', message: 'ยังไม่ได้ใส่ OPENROUTER_API_KEY ใน Environment Variables ของ Render' }.to_json
-  end
+        .chat-line {
+            margin-bottom: 8px;
+        }
 
-  begin
-    request_payload = JSON.parse(request.body.read)
-    user_input = request_payload['message'] || ""
+        .user-label {
+            color: #0000d6;
+            font-weight: bold;
+        }
 
-    uri = URI.parse("https://openrouter.ai/api/v1/chat/completions")
-    
-    headers = {
-      'Authorization' => "Bearer #{api_key.strip}",
-      'Content-Type' => 'application/json',
-      'HTTP-Referer' => 'https://maximoc-backend.onrender.com',
-      'X-Title' => 'Maximoc Chatbot'
-    }
+        .bot-label {
+            color: #d32f2f;
+            font-weight: bold;
+        }
 
-    # เปลี่ยนเป็นโมเดล Meta-Llama ขนาดเล็ก ประมวลผลไว
-    model_id = "meta-llama/llama-3.2-1b-instruct"
+        .input-section {
+            display: flex;
+            gap: 10px;
+        }
 
-    body = {
-      model: model_id,
-      messages: [
-        { role: "system", content: "You are Maximoc, a clever AI assistant. Answer briefly and directly." },
-        { role: "user", content: user_input }
-      ],
-      max_tokens: 200,
-      temperature: 0.7
-    }.to_json
+        input[type="text"] {
+            flex: 1;
+            padding: 8px;
+            font-size: 1rem;
+            border: 1px solid #777777;
+            background-color: #ffffff;
+        }
 
-    http = Net::HTTP.new(uri.hostname, uri.port)
-    http.use_ssl = true
-    http.open_timeout = 10
-    http.read_timeout = 25
+        button {
+            padding: 8px 16px;
+            font-size: 0.95rem;
+            font-weight: bold;
+            cursor: pointer;
+            border: 1px solid #666666;
+            background-color: #e0e0e0;
+        }
 
-    req = Net::HTTP::Post.new(uri.request_uri, headers)
-    req.body = body
+        button:active {
+            background-color: #cccccc;
+        }
 
-    response = http.request(req)
-    data = JSON.parse(response.body) rescue {}
+        .btn-clear {
+            background-color: #f0f0f0;
+            color: #555555;
+        }
+    </style>
+</head>
+<body>
 
-    if response.code.to_i == 200 && data['choices'] && data['choices'][0] && data['choices'][0]['message']
-      reply_text = data['choices'][0]['message']['content'].strip
-      { status: 'success', reply: reply_text }.to_json
-    elsif data['error'] && data['error']['message']
-      { status: 'error', message: "OpenRouter Error: #{data['error']['message']}" }.to_json
-    else
-      { status: 'error', message: "HTTP #{response.code}: #{response.body[0..150]}" }.to_json
-    end
+    <div class="header-title">Maximoc</div>
 
-  rescue => e
-    status 500
-    { status: 'error', message: e.message }.to_json
-  end
-end
+    <div class="chat-wrapper">
+        <div class="chat-history" id="chatHistory"></div>
+
+        <div class="input-section">
+            <input type="text" id="userInput" placeholder="Think about this..." onkeypress="handleKeyPress(event)">
+            <button onclick="sendMessage()">Think About It</button>
+            <button class="btn-clear" onclick="clearChat()">Clear</button>
+        </div>
+    </div>
+
+    <script>
+        const chatHistory = document.getElementById('chatHistory');
+        const userInput = document.getElementById('userInput');
+
+        const BACKEND_URL = 'https://maximoc-backend.onrender.com/chat';
+
+        // ตัวแปรเก็บบทสนทนาเพื่อทำความทรงจำส่งให้ Backend (เก็บสูงสุด 10 ข้อความล่าสุด)
+        let memory = [];
+
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (text === '') return;
+
+            // 1. แสดงข้อความของ User
+            appendMessage('User', text, 'user-label');
+            userInput.value = '';
+
+            // 2. แสดงสถานะกำลังคิด
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'chat-line';
+            loadingDiv.id = 'loading-indicator';
+            loadingDiv.innerHTML = `<span class="bot-label">Maximoc:</span> <i>Thinking...</i>`;
+            chatHistory.appendChild(loadingDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+
+            try {
+                // 3. ยิง Request พร้อม History
+                const response = await fetch(BACKEND_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        message: text,
+                        history: memory
+                    })
+                });
+
+                const data = await response.json();
+
+                // ลบสถานะกำลังคิดออก
+                document.getElementById('loading-indicator')?.remove();
+
+                if (data.status === 'success') {
+                    // บันทึกความทรงจำ (User & Assistant)
+                    memory.push({ role: 'user', content: text });
+                    memory.push({ role: 'assistant', content: data.reply });
+
+                    // จำกัดความจำไว้ที่ 10 ข้อความล่าสุดเพื่อไม่ให้กิน Token เกิน
+                    if (memory.length > 10) {
+                        memory = memory.slice(memory.length - 10);
+                    }
+
+                    // แสดงข้อความ Maximoc แบบพิมพ์ทีละตัว
+                    typeWriter('Maximoc', data.reply, 'bot-label', 25);
+                } else {
+                    const errorDetail = data.reply || data.message || 'ไม่ทราบสาเหตุ';
+                    appendMessage('Maximoc', `[Error: ${errorDetail}]`, 'bot-label');
+                }
+
+            } catch (error) {
+                document.getElementById('loading-indicator')?.remove();
+                appendMessage('Maximoc', '[Error: ไม่สามารถเชื่อมต่อกับ Server ได้]', 'bot-label');
+                console.error('Fetch error:', error);
+            }
+        }
+
+        // พิมพ์ตัวอักษรทีละตัว
+        function typeWriter(sender, text, labelClass, speed = 25) {
+            const msgLine = document.createElement('div');
+            msgLine.className = 'chat-line';
+            
+            const labelSpan = document.createElement('span');
+            labelSpan.className = labelClass;
+            labelSpan.textContent = `${sender}: `;
+            
+            const textSpan = document.createElement('span');
+            
+            msgLine.appendChild(labelSpan);
+            msgLine.appendChild(textSpan);
+            chatHistory.appendChild(msgLine);
+
+            let i = 0;
+            function type() {
+                if (i < text.length) {
+                    textSpan.textContent += text.charAt(i);
+                    i++;
+                    chatHistory.scrollTop = chatHistory.scrollHeight;
+                    setTimeout(type, speed);
+                }
+            }
+            type();
+        }
+
+        function appendMessage(sender, text, labelClass) {
+            const msgLine = document.createElement('div');
+            msgLine.className = 'chat-line';
+            msgLine.innerHTML = `<span class="${labelClass}">${sender}:</span> ${escapeHtml(text)}`;
+            chatHistory.appendChild(msgLine);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        function clearChat() {
+            chatHistory.innerHTML = '';
+            userInput.value = '';
+            memory = []; // ล้างความจำเมื่อกด Clear
+        }
+
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        function escapeHtml(string) {
+            return string.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+    </script>
+
+</body>
+</html>
