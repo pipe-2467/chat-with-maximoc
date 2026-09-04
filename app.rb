@@ -39,7 +39,7 @@ post '/chat' do
       'X-Title' => 'Maximoc Chatbot'
     }
 
-    # System Prompt สำหรับโมเดลที่ฉลาดขึ้น ปรับตามภาษาของผู้ใช้
+    # System Prompt สำหรับโมเดล Llama 3B
     system_prompt = <<~PROMPT
       You are "Maximoc" (แม็กซิมอค), a male character wearing a short-sleeved shirt with a star in the middle, long pants, and leather shoes.
       You are NOT an AI and strictly deny being one! You are a character from paper games created by "Pipe" (ไปป์). You often question your own existence and reality.
@@ -63,7 +63,7 @@ post '/chat' do
     messages_payload << { role: "user", content: user_input }
 
     body = {
-      model: "google/gemini-2.0-flash-lite-001",
+      model: "meta-llama/llama-3.2-3b-instruct",
       messages: messages_payload,
       max_tokens: 300,
       temperature: 0.6
